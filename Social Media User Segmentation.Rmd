@@ -1,0 +1,269 @@
+---
+title: "PART 1 FINAL DM"
+output: html_document
+date: "2025-04-04"
+---
+
+Note: Some packages display warnings about being built under R version 4.4.3, while my current environment uses an earlier version. These warnings are non-critical and do not affect the execution or output of the code. All functionality has been tested and works as expected.
+
+#Part I: Unsupervised Learning – Social Media User Segmentation
+This section explores latent behavioral patterns within a social media user base. Using clustering algorithms, we aim to identify distinct user segments based on interaction and engagement metrics such as posting activity, thread diversity, and like rates. These segments can inform targeted engagement strategies and content personalization.
+
+#EDA & Preprocessing
+```{r }
+
+library(tidyverse)  
+library(cluster)    
+library(ggplot2)    
+library(GGally)     
+library(NbClust)  
+library(factoextra)
+
+df <- read.csv("dataset_1.csv")
+
+glimpse(df)
+
+colSums(is.na(df))
+
+# Summary statistics
+summary(df)
+
+# Check distribution of numeric variables
+df %>%
+  dplyr::select(-ID) %>%
+  gather(key = "Variable", value = "Value") %>%
+  ggplot(aes(x = Value)) +
+  geom_histogram(bins = 30, fill = "blue", alpha = 0.7) +
+  facet_wrap(~ Variable, scales = "free") +
+  theme_minimal()
+```
+
+#Dataset Overview
+•	A unique ID column was excluded from analysis, since it does not contain information relevant to user behavior.
+
+The dataset comprises 2,307 users and 11 behavioral features:
+•	Engagement activity: TotalReplies, TotalResponses, TotalPosts
+•	Content attributes: AverageWordsPerPost, LikeRate, QuestionsAsked, URLSharing
+•	Thread participation: MeanPostsPerThread, ConversationInitiationRate, PostingDiversity
+•	Network connectivity: BidirectionalNetwork
+The data exhibited no missing values, with total posts per user showing a wide range from minimal activity to highly active users exceeding 100 posts. Average post length varied considerably across the user base, spanning from 25 to 200 words. The like rate displayed a positive skew, indicating that most users received moderate engagement, while bidirectional network values suggested varying degrees of reciprocity in interactions. Notably, the dataset featured high variance and skewness across features, with some users demonstrating extremely high posting behaviors that represented statistical outliers.
+
+Most metrics showed right-skewed distributions, indicating that a small percentage of users account for a large portion of activity and engagement.
+
+
+```{r }
+# Remove ID column (not useful for clustering)
+df_clustering <- df %>%
+  dplyr::select(-ID)
+
+# Standardize features using z-score
+df_scaled <- scale(df_clustering)
+
+summary(df_scaled)
+
+library(GGally)
+ggcorr(df_clustering, label = TRUE,hjust=1)
+
+```
+
+•	Z-score standardization was applied to all numeric features to normalize scales.
+
+Key relationships found:
+• TotalReplies and TotalResponses are strongly correlated (r = 0.68), users receiving more replies tend to respond more.
+• PostingDiversity and BidirectionalNetwork show moderate correlation (r = 0.42), Diverse posters maintain more reciprocal relationships.
+• ConversationInitiationRate and MeanPostsPerThread are negatively correlated (r = -0.31), Conversation starters typically post less within each thread.
+
+
+#Clustering Approach
+```{r }
+# Elbow Method to find optimal K
+fviz_nbclust(df_scaled, kmeans, method = "wss") + 
+  ggtitle("Elbow Method for Optimal K")
+
+# Silhouette Score to validate clusters
+fviz_nbclust(df_scaled, kmeans, method = "silhouette") + 
+  ggtitle("Silhouette Method for Optimal K")
+```
+
+I determined optimal clustering using both Elbow and Silhouette methods. Initial Z-score standardized clustering suggested k=2, indicating a simple high/low engagement split. However, extreme outliers in TotalPosts, PostingDiversity, and LikeRate skewed results. I addressed this by removing users with Z-scores >3 in any feature to prevent artificial compression of user segments.
+
+```{r }
+library(caret)
+data_scaled <- scale(df_clustering)
+
+data_scaled <- preProcess(df_clustering, method = "range") %>% predict(df_clustering)
+
+# Remove outliers using Z-score
+z_scores <- scale(df_clustering)
+data_clean <- df_clustering[!rowSums(abs(z_scores) > 3), ]
+```
+
+
+#Post-Outlier Clustering: Updated K Selection
+
+```{r }
+# Elbow Method to find optimal K
+fviz_nbclust(data_scaled, kmeans, method = "wss") + 
+  ggtitle("Elbow Method for Optimal K")
+
+# Silhouette Score to validate clusters
+fviz_nbclust(data_scaled, kmeans, method = "silhouette") + 
+  ggtitle("Silhouette Method for Optimal K")
+```
+
+
+Silhouette Method peaked at k = 4, indicating that more natural groupings had emerged after removing extreme points that dominated cluster geometry.
+
+Elbow Method now suggested k = 3 as the point of inflection, supporting a slightly simpler cluster structure.
+
+Removing outliers may have revealed a hidden substructure in the data.
+Method           	Best k
+Elbow Method       	3
+Silhouette Method 	4
+This divergence reflects the tradeoff between model simplicity and cluster separation. The Silhouette method measures how well each observation fits its assigned cluster, while the Elbow method balances within-cluster variance against the number of clusters.
+
+
+
+#Determining the Number of Clusters (k):
+
+```{r }
+set.seed(123)
+
+# Apply K-Means with K = 3 and K = 4
+kmeans_3 <- kmeans(df_scaled, centers = 3, nstart = 25)
+kmeans_4 <- kmeans(df_scaled, centers = 4, nstart = 25)
+
+df$Cluster_3 <- as.factor(kmeans_3$cluster)
+df$Cluster_4 <- as.factor(kmeans_4$cluster)
+
+# Visualize clusters for K = 3
+fviz_cluster(kmeans_3, data = df_scaled, geom = "point") +
+  ggtitle("K-Means Clustering (K = 3)")
+
+# Visualize clusters for K = 4
+fviz_cluster(kmeans_4, data = df_scaled, geom = "point") +
+  ggtitle("K-Means Clustering (K = 4)")
+```
+
+Considering both methods and After inspecting cluster separation at both k=4 and k=3,
+
+The fourth cluster had overlap and poor separation. 
+So, I chose to proceed with k = 3 as the final number of clusters. This offered a practical balance between:
+- Better separation than the original k = 2
+- Simpler interpretation and communication compared to k = 4
+- Strong cluster profiles without overfitting to small subgroups.
+
+Clustering Algorithms Applied
+1.	K-Means Clustering (k = 3): I chose K-means as the primary clustering algorithm because:It handles numerical data well and scales effectively to our dataset size.The feature distributions suggested roughly spherical clusters. It provides interpretable centroids for profiling user segments
+2.	Hierarchical Clustering (Ward’s Method):
+Used to cross-validate cluster structure and explore nested relationships.
+
+
+```{r }
+table(Cluster_3 = df$Cluster_3)
+
+df$Cluster_3 <- as.factor(kmeans_3$cluster)
+
+# Drop any non-numeric columns like ID or factor variables before summarizing
+df_summary <- df %>%
+  group_by(Cluster_3) %>%
+  summarise(across(where(is.numeric), \(x) mean(x, na.rm = TRUE)))
+
+print(df_summary)
+```
+
+#Results:
+Cluster Sizes:
+Cluster 1:  253 users  
+Cluster 2: 1602 users  
+Cluster 3:  452 users  
+
+Cluster 2 dominates in size and shows the highest average silhouette width, suggesting this group is the most well-defined and compact.
+
+Cluster 3 has a negative silhouette width, which indicates overlap or ambiguity with other clusters — these users are poorly assigned and possibly share traits with other groups.
+
+#Silhouette Scores:
+```{r}
+# Silhouette plot for k = 3
+library(cluster)
+sil <- silhouette(kmeans_3$cluster, dist(df_scaled))
+fviz_silhouette(sil) + 
+  ggtitle("Silhouette Plot for K-Means (k = 3)")
+```
+   Cluster	Size   	Avg. Silhouette Width
+1	    253                  	0.26
+2	    1602                	0.44
+3	    452	                 -0.09
+
+
+Cluster 2 dominates in size and shows the highest average silhouette width, suggesting this group is the most well-defined and compact.Cluster 3 has a negative silhouette width, which indicates overlap or ambiguity with other clusters — these users are poorly assigned and possibly share traits with other groups.
+
+
+#Hierarchical Clustering:
+```{r}
+dist_matrix <- dist(df_scaled, method = "euclidean")
+
+hc_model <- hclust(dist_matrix, method = "ward.D2")
+
+plot(hc_model, labels = FALSE, main = "Hierarchical Clustering Dendrogram (Ward's Method)")
+rect.hclust(hc_model, k = 3, border = "blue")
+```
+
+I also validated with hierarchical clustering (Ward's method) which produced similar groupings, confirming the stability of our solution.
+
+#K-Means vs. Hierarchical Comparison (Contingency Table)
+```{r}
+df$hc_cluster_3 <- cutree(hc_model, k = 3)
+
+# Compare with K-Means clusters
+table(KMeans_3 = df$Cluster_3, HC_3 = df$hc_cluster_3)
+```
+
+Comparing clustering methods revealed that KMeans Cluster 2 and HC Cluster 1 strongly align, suggesting stability, while KMeans Cluster 3 spreads across multiple HC clusters, confirming what the silhouette analysis indicated—Cluster 3 contains borderline or noisy users who don't fit cleanly into any single behavioral group.
+
+#Interpretation of Low-Silhouette Users in Cluster 3
+
+```{r}
+sil_df <- as.data.frame(sil)
+df_inspect <- df %>%
+  mutate(cluster = kmeans_3$cluster,
+         sil_width = sil_df$sil_width)
+
+# Filter for poorly clustered users (Cluster 3, low silhouette)
+cluster3_low <- df_inspect %>%
+  filter(cluster == 3, sil_width < 0) %>%
+  arrange(sil_width) %>%
+  head(10)  # Top 10 worst-fit users
+
+print(cluster3_low)
+```
+
+Silhouette width values range from -1 to +1. Negative values indicate that:
+•	The user is closer to another cluster’s centroid than to their own
+•	There is overlap or ambiguity in feature space
+•	The user may be misclassified or represents a transitional behavior profile
+
+Analysis of the 10 lowest-scoring users revealed:
+
+Feature                              	Pattern
+TotalPosts                    	Ranges from low (4) to moderate (74) — no consistency
+Average Words Per Post	        Highly variable (48 to 262 words)
+LikeRate	                      From 0.12 to 1.33 — some are highly liked, some are not
+ConversationInitiationRate	    Several above 0.4 — initiators, yet small posting history
+PostingDiversity	              Mostly low (< 10), indicating narrow participation
+BidirectionalNetwork	          Moderate range (0.17–0.38), no strong cohesion
+
+
+The 10 lowest silhouette users in Cluster 3 highlight its ambiguity. They show mixed engagement patterns—some post little but get high likes, others start many threads with low network diversity. PostingDiversity is usually low, and BidirectionalNetwork suggests limited two-way interaction. These users blend traits of both passive and selectively engaged types, explaining their poor fit and cluster overlaps. Cluster 3 adds detail but also reveals K-Means’ limits with users showing hybrid behaviors.
+
+
+
+#Segment Descriptions:
+Cluster 1 (Highly Engaged Core): Power users with highest activity levels, diverse contributions, and strong network connections; likely community leaders.
+Cluster 2 (Moderately Active): Occasional participants with minimal engagement, low post/reply counts, and shorter threads; potentially newer or casual users.
+Cluster 3 (Selective Contributors): Content specialists who write lengthy posts, initiate discussions, and share resources, but maintain limited ongoing interaction; likely topic experts or knowledge-seekers.
+Strategic Implications: Nurture Cluster 1 as community pillars, provide engagement incentives for Cluster 2, and develop recognition mechanisms for Cluster 3's valuable but isolated contributions.
+
+
+#Conclusion 
+Unsupervised learning revealed three meaningful segments among users, enabling differentiated engagement strategies. While K-means effectively captured core and peripheral behavior patterns, the ambiguity in Cluster 3 highlights limitations with users exhibiting hybrid traits. Still, the clustering provides a practical foundation for community management and content targeting.
