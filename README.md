@@ -24,7 +24,7 @@ This project applies unsupervised machine learning techniques to segment social 
 ## Files Included
 - R Markdown code
 - Full analysis report (HTML)
-- Dataset (if permitted)
+- Dataset 
 
 ## Author
 MSc Business Analytics Graduate  
