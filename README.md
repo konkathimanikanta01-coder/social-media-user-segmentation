@@ -1,7 +1,7 @@
 # Social Media User Segmentation using Machine Learning (Unsupervised Learning)
 
 ## Project Overview
-This project applies unsupervised machine learning techniques to segment social media users based on behaviour, usage patterns, and demographic features. The objective is to identify meaningful user groups to support targeted marketing and business decision-making.
+This project applies unsupervised machine learning techniques to identify distinct behavioral segments within a social media user base. Using K-means and hierarchical clustering algorithms, we analyze 2,307 users across 11 engagement metrics to uncover latent patterns that can inform targeted engagement strategies and content personalization. The objective is to identify meaningful user groups to support targeted marketing and business decision-making.
 
 ## Tools & Technologies
 - R (tidyverse, ggplot2, cluster)
